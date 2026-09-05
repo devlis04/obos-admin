@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:js_interop';
 import 'dart:typed_data';
 
@@ -25,4 +26,12 @@ void unduhBerkas({
     a.remove();
     web.URL.revokeObjectURL(url);
   });
+}
+
+void unduhCsv({required String nama, required String isi}) {
+  unduhBerkas(
+    bytes: Uint8List.fromList([0xEF, 0xBB, 0xBF, ...utf8.encode(isi)]),
+    nama: nama,
+    mime: 'text/csv;charset=utf-8',
+  );
 }

@@ -43,7 +43,14 @@ class MutasiCsv {
     'nominalkredit',
   };
 
-  static const _debit = {'debit', 'keluar', 'nominaldebit'};
+  static const _debit = {
+    'debit',
+    'debet',
+    'keluar',
+    'nominaldebit',
+    'nominaldebet',
+    'db',
+  };
 
   static const _jenis = {
     'jenis',
@@ -120,8 +127,12 @@ class MutasiCsv {
       final kredit = iJumlah == null ? 0 : _uang(kol, iJumlah);
       final debit = iDebit == null ? 0 : _uang(kol, iDebit);
       if (debit > 0 && kredit <= 0) continue;
+      if (kredit < 0) continue;
       final jumlah = kredit;
       if (jumlah <= 0) continue;
+      if (beritaDebet(iBerita == null ? '' : _isi(kol, iBerita))) {
+        continue;
+      }
       hasil.add(
         BarisMutasi(
           tanggalMutasi: iTgl == null ? null : _tanggalIso(_isi(kol, iTgl)),
@@ -191,9 +202,17 @@ class MutasiCsv {
     return t == 'DB' ||
         t == 'D' ||
         t == 'DEBIT' ||
+        t == 'DEBET' ||
         t == 'KELUAR' ||
         t == 'DR';
   }
+
+  static final _reDebetBerita = RegExp(
+    r'(^|[^A-Z0-9])(DB|DEBET|DEBIT)([^A-Z0-9]|$)',
+    caseSensitive: false,
+  );
+
+  static bool beritaDebet(String s) => _reDebetBerita.hasMatch(s);
 
   static int _uang(List<String> kol, int i) {
     final s = _isi(kol, i);
@@ -211,7 +230,10 @@ class MutasiCsv {
       t = t.replaceAll('.', '');
     }
     final n = num.tryParse(t);
-    if (n != null) return n.round().abs();
+    if (n != null) {
+      if (n < 0) return 0;
+      return n.round();
+    }
     final digits = t.replaceAll(RegExp(r'[^0-9]'), '');
     return int.tryParse(digits) ?? 0;
   }

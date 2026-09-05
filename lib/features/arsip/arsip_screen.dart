@@ -7,11 +7,17 @@ import '../../core/format_uang.dart';
 import '../../core/gulir.dart';
 import '../../core/network_probe.dart';
 import '../../core/ui_feedback.dart';
+import '../../core/unduh_berkas.dart';
 import '../auth/login_screen.dart';
 
 class ArsipScreen extends StatefulWidget {
   final AuthController auth;
-  const ArsipScreen({super.key, required this.auth});
+  final VoidCallback bukaMenu;
+  const ArsipScreen({
+    super.key,
+    required this.auth,
+    required this.bukaMenu,
+  });
 
   @override
   State<ArsipScreen> createState() => _ArsipScreenState();
@@ -132,6 +138,41 @@ class _ArsipScreenState extends State<ArsipScreen> {
     if (pilih == null) return;
     setState(() => _hari = DateTime(pilih.year, pilih.month, pilih.day));
     await _muatData(layarPenuh: true);
+  }
+
+  String _selCsv(Object? v) {
+    final s = v?.toString() ?? '';
+    if (s.contains(RegExp(r'[;"\n\r]'))) {
+      return '"${s.replaceAll('"', '""')}"';
+    }
+    return s;
+  }
+
+  void _unduhHalaman() {
+    final isi = <String>[
+      'Bagian;Rute;Kode;Qty;Nilai usul;Nilai kunci;Catatan',
+    ];
+    for (final row in _retur) {
+      isi.add(
+        [
+          'Retur',
+          row['rute_pengirim'] ?? '',
+          '',
+          _angka(row['qty_kunci']),
+          _angka(row['jumlah_usul']),
+          _angka(row['nilai_kunci']),
+          row['catatan_kunci'] ?? '',
+        ].map(_selCsv).join(';'),
+      );
+    }
+    for (final t in _tambahan) {
+      isi.add(
+        ['TAMBAHAN', '', t.kode, t.qty, '', '', '']
+            .map(_selCsv)
+            .join(';'),
+      );
+    }
+    unduhCsv(nama: 'arsip_$_iso.csv', isi: isi.join('\n'));
   }
 
   Future<void> _kunciRetur(Map<String, dynamic> row) async {
@@ -329,6 +370,11 @@ class _ArsipScreenState extends State<ArsipScreen> {
     final judul = DateFormat('EEEE d/MM/yyyy', 'id').format(_hari);
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          tooltip: 'Menu',
+          onPressed: widget.bukaMenu,
+          icon: const Icon(Icons.menu),
+        ),
         title: Text('Arsip  $judul'),
         actions: [
           IconButton(
@@ -337,14 +383,19 @@ class _ArsipScreenState extends State<ArsipScreen> {
             icon: const Icon(Icons.calendar_month_outlined),
           ),
           IconButton(
+            tooltip: 'Simpan',
+            onPressed: _muat || _proses || _arsipKunci ? null : _simpanTambahan,
+            icon: const Icon(Icons.save_outlined),
+          ),
+          IconButton(
+            tooltip: 'Unduh',
+            onPressed: _muat || _proses ? null : _unduhHalaman,
+            icon: const Icon(Icons.download_outlined),
+          ),
+          IconButton(
             tooltip: 'Segarkan',
             onPressed: () => _muatData(layarPenuh: true),
             icon: const Icon(Icons.refresh),
-          ),
-          IconButton(
-            tooltip: 'Keluar',
-            onPressed: widget.auth.logout,
-            icon: const Icon(Icons.logout),
           ),
         ],
       ),

@@ -7,11 +7,17 @@ import '../../core/format_uang.dart';
 import '../../core/gulir.dart';
 import '../../core/network_probe.dart';
 import '../../core/ui_feedback.dart';
+import '../../core/unduh_berkas.dart';
 import '../auth/login_screen.dart';
 
 class GajiScreen extends StatefulWidget {
   final AuthController auth;
-  const GajiScreen({super.key, required this.auth});
+  final VoidCallback bukaMenu;
+  const GajiScreen({
+    super.key,
+    required this.auth,
+    required this.bukaMenu,
+  });
 
   @override
   State<GajiScreen> createState() => _GajiScreenState();
@@ -157,6 +163,32 @@ class _GajiScreenState extends State<GajiScreen> {
     await _muatData(layarPenuh: true);
   }
 
+  String _selCsv(Object? v) {
+    final s = v?.toString() ?? '';
+    if (s.contains(RegExp(r'[;"\n\r]'))) {
+      return '"${s.replaceAll('"', '""')}"';
+    }
+    return s;
+  }
+
+  void _unduhHalaman() {
+    final isi = <String>['Nama;Peran;Hak;Kasbon;Dibayar;Hari'];
+    for (final s in _slip) {
+      final ada = s['ada_slip'] == true;
+      isi.add(
+        [
+          s['nama'] ?? '',
+          _labelPeran(s),
+          ada ? s['total_insentif'] ?? 0 : '',
+          s['kasbon'] ?? 0,
+          ada ? s['dibayar'] ?? 0 : '',
+          ada ? s['hari_kerja'] ?? 0 : '',
+        ].map(_selCsv).join(';'),
+      );
+    }
+    unduhCsv(nama: 'gaji_$_isoSenin.csv', isi: isi.join('\n'));
+  }
+
   Future<void> _simpanOngkir() async {
     if (!await _adaNet()) return;
     setState(() => _proses = true);
@@ -220,6 +252,11 @@ class _GajiScreenState extends State<GajiScreen> {
         '${DateFormat('d/MM/yyyy').format(_senin)} – ${DateFormat('d/MM/yyyy').format(_sabtu)}';
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          tooltip: 'Menu',
+          onPressed: widget.bukaMenu,
+          icon: const Icon(Icons.menu),
+        ),
         title: Text('Gaji  $judul'),
         actions: [
           IconButton(
@@ -228,14 +265,21 @@ class _GajiScreenState extends State<GajiScreen> {
             icon: const Icon(Icons.calendar_month_outlined),
           ),
           IconButton(
+            tooltip: 'Simpan',
+            onPressed: _muat || _proses || _status == 'kunci'
+                ? null
+                : _simpanOngkir,
+            icon: const Icon(Icons.save_outlined),
+          ),
+          IconButton(
+            tooltip: 'Unduh',
+            onPressed: _muat || _proses ? null : _unduhHalaman,
+            icon: const Icon(Icons.download_outlined),
+          ),
+          IconButton(
             tooltip: 'Segarkan',
             onPressed: () => _muatData(layarPenuh: true),
             icon: const Icon(Icons.refresh),
-          ),
-          IconButton(
-            tooltip: 'Keluar',
-            onPressed: widget.auth.logout,
-            icon: const Icon(Icons.logout),
           ),
         ],
       ),

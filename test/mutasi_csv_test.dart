@@ -15,7 +15,7 @@ void main() {
     expect(h.baris.first.rekening, 'Devlis');
   });
 
-  test('abaikan baris debit', () {
+  test('abaikan baris debit dari kolom Jenis dan berita DB', () {
     const csv = 'keterangan,kredit,debit\n'
         'setor,0,100000\n'
         'masuk,750000,0\n';

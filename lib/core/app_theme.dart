@@ -3,6 +3,29 @@ import 'package:flutter/material.dart';
 class AppTheme {
   static const Color seed = Color(0xFF1B75CB);
 
+  static TextStyle _tebal(TextStyle? s) =>
+      (s ?? const TextStyle()).copyWith(fontWeight: FontWeight.bold);
+
+  static TextTheme _temaTebal(TextTheme t) {
+    return t.copyWith(
+      displayLarge: _tebal(t.displayLarge),
+      displayMedium: _tebal(t.displayMedium),
+      displaySmall: _tebal(t.displaySmall),
+      headlineLarge: _tebal(t.headlineLarge),
+      headlineMedium: _tebal(t.headlineMedium),
+      headlineSmall: _tebal(t.headlineSmall),
+      titleLarge: _tebal(t.titleLarge),
+      titleMedium: _tebal(t.titleMedium),
+      titleSmall: _tebal(t.titleSmall),
+      bodyLarge: _tebal(t.bodyLarge),
+      bodyMedium: _tebal(t.bodyMedium),
+      bodySmall: _tebal(t.bodySmall),
+      labelLarge: _tebal(t.labelLarge),
+      labelMedium: _tebal(t.labelMedium),
+      labelSmall: _tebal(t.labelSmall),
+    );
+  }
+
   static ThemeData light() {
     final ColorScheme scheme = ColorScheme.fromSeed(seedColor: seed).copyWith(
       primary: seed,
@@ -19,11 +42,19 @@ class AppTheme {
     final BorderRadius buttonRadius = BorderRadius.circular(25);
     final BorderRadius cardRadius = BorderRadius.circular(16);
     final BorderRadius inputRadius = BorderRadius.circular(12);
+    const gayaTebal = TextStyle(fontWeight: FontWeight.bold);
+
+    final dasar = ThemeData(
+      useMaterial3: true,
+      colorScheme: scheme,
+    );
 
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
       scaffoldBackgroundColor: const Color(0xFFF3F5F8),
+      textTheme: _temaTebal(dasar.textTheme),
+      primaryTextTheme: _temaTebal(dasar.primaryTextTheme),
       iconTheme: const IconThemeData(color: seed),
       appBarTheme: AppBarTheme(
         backgroundColor: scheme.surface,
@@ -82,7 +113,7 @@ class AppTheme {
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: seed,
-          textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+          textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
         ),
       ),
       iconButtonTheme: IconButtonThemeData(
@@ -104,6 +135,13 @@ class AppTheme {
           horizontal: 16,
           vertical: 14,
         ),
+        hintStyle: gayaTebal,
+        labelStyle: gayaTebal,
+        floatingLabelStyle: gayaTebal,
+        helperStyle: gayaTebal,
+        errorStyle: gayaTebal,
+        prefixStyle: gayaTebal,
+        suffixStyle: gayaTebal,
         border: OutlineInputBorder(
           borderRadius: inputRadius,
           borderSide: const BorderSide(color: seed, width: 1.2),
@@ -144,9 +182,14 @@ class AppTheme {
       listTileTheme: const ListTileThemeData(
         iconColor: seed,
         titleTextStyle: TextStyle(
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.bold,
           fontSize: 15,
           color: Colors.black87,
+        ),
+        subtitleTextStyle: TextStyle(
+          fontWeight: FontWeight.bold,
+          fontSize: 13,
+          color: Colors.black54,
         ),
       ),
       progressIndicatorTheme: const ProgressIndicatorThemeData(color: seed),
@@ -184,7 +227,11 @@ class AppTheme {
           color: seed,
           fontSize: 13,
         ),
-        dataTextStyle: const TextStyle(fontSize: 13, color: Colors.black87),
+        dataTextStyle: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.bold,
+          color: Colors.black87,
+        ),
         dividerThickness: 0.6,
       ),
       navigationRailTheme: NavigationRailThemeData(
@@ -195,7 +242,10 @@ class AppTheme {
           color: seed,
           fontWeight: FontWeight.bold,
         ),
-        unselectedLabelTextStyle: TextStyle(color: seed.withAlpha(180)),
+        unselectedLabelTextStyle: TextStyle(
+          color: seed.withAlpha(180),
+          fontWeight: FontWeight.bold,
+        ),
         indicatorColor: scheme.primaryContainer,
       ),
       navigationBarTheme: NavigationBarThemeData(
@@ -205,11 +255,9 @@ class AppTheme {
           return const IconThemeData(color: seed);
         }),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
-          return TextStyle(
+          return const TextStyle(
             color: seed,
-            fontWeight: states.contains(WidgetState.selected)
-                ? FontWeight.bold
-                : FontWeight.w500,
+            fontWeight: FontWeight.bold,
             fontSize: 12,
           );
         }),

@@ -22,12 +22,14 @@ Sheet bernama SBGP01 bisa berisi rute sales lain di baris 1 (contoh Selasa: SBGS
 | BATALAN | Batal = packed − actual per nota |
 | RETURAN | Tidak dipisah; masuk Batal |
 | TK NGANJUK | Tidak ada di aplikasi |
-| net = kiriman − batal − retur − nganjuk | Actual |
+| net = kiriman − batal − pending | Actual |
 | TRANSFER (baris bank + lookup rekening) | Transfer kunci pengirim + unggah mutasi CSV |
 | CASH (pecahan × nilai) | Tunai pengirim + Tunai admin (total; pecahan hanya alat bantu UI) |
 | BOP (+ bensin) | BOP (`jumlah_bop`, maks 170.000 / pengirim / hari) |
 | DIPAKE | Kasbon supir + kenek |
-| SESA = net − transfer − cash − BOP − dipake | SESA = actual − transfer − tunai − BOP − kasbon |
+| SESA / CEK | Cek = actual − mutasi − tunai admin − BOP − kasbon − retur |
+
+Pending (ditunda ke besok) tetap di Kiriman hari itu, lalu **otomatis masuk Kiriman keesokan harinya**. Actual hari itu = Kiriman − Batal − Pending.
 
 Rumus kunci pengirim sudah: `actual ≈ transfer + tunai + BOP` (kasbon menutup selisih). SESA Excel = rekonsiliasi yang sama.
 
