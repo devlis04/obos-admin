@@ -303,8 +303,7 @@ class _SetoranScreenState extends State<SetoranScreen> {
   }
 
   void _tandaiKotor() {
-    if (_kotor) return;
-    setState(() => _kotor = true);
+    _kotor = true;
   }
 
   Future<bool> _izinBuangDraf() async {
@@ -1477,12 +1476,11 @@ class _SetoranScreenState extends State<SetoranScreen> {
   Future<void> _cekOpname() async {
     if (_proses) return;
     if (!await _adaNet()) return;
-    setState(() => _proses = true);
+    _proses = true;
     try {
       final ringkas = await _ringkasOpname();
       if (!mounted) return;
       setState(() {
-        _proses = false;
         _opnameAda = ringkas.ada;
         _opnameStatus = ringkas.status;
         _opnameSelisihSku = ringkas.sku;
@@ -1508,11 +1506,12 @@ class _SetoranScreenState extends State<SetoranScreen> {
       await _dialogSelisihOpname();
     } catch (_) {
       if (!mounted) return;
-      setState(() => _proses = false);
       showAppSnackBar(
         context,
         message: 'Gagal cek opname. Jalankan ulang arsip_harian.sql, lalu coba lagi.',
       );
+    } finally {
+      _proses = false;
     }
   }
 
@@ -1572,7 +1571,7 @@ class _SetoranScreenState extends State<SetoranScreen> {
     );
     if (pilih == null) return;
     if (!mounted) return;
-    setState(() => _hari = DateTime(pilih.year, pilih.month, pilih.day));
+    _hari = DateTime(pilih.year, pilih.month, pilih.day);
     await _muatData(layarPenuh: true, buangDraf: true);
   }
 
@@ -2425,6 +2424,7 @@ class _SetoranScreenState extends State<SetoranScreen> {
         );
       },
     );
+    if (mounted) setState(() {});
   }
 
   String _labelKasbon(Map<String, dynamic> row, String peran) {
@@ -2959,50 +2959,46 @@ class _SetoranScreenState extends State<SetoranScreen> {
     List<Map<String, dynamic>> items,
     List<String> daftarRute,
   ) {
-    setState(() {
-      _truk = [
-        for (final row in _truk)
-          () {
-            final rute = row['rute_pengirim']?.toString() ?? '';
-            if (!daftarRute.contains(rute)) return row;
-            final punya = items
-                .where(
-                  (it) =>
-                      List<String>.from((it['rute_list'] as List?) ?? const [])
-                          .contains(rute),
-                )
-                .toList();
-            return {
-              ...row,
-              'batal_dicek':
-                  punya.isNotEmpty && punya.every((it) => it['dicek'] == true),
-            };
-          }(),
-      ];
-    });
+    _truk = [
+      for (final row in _truk)
+        () {
+          final rute = row['rute_pengirim']?.toString() ?? '';
+          if (!daftarRute.contains(rute)) return row;
+          final punya = items
+              .where(
+                (it) =>
+                    List<String>.from((it['rute_list'] as List?) ?? const [])
+                        .contains(rute),
+              )
+              .toList();
+          return {
+            ...row,
+            'batal_dicek':
+                punya.isNotEmpty && punya.every((it) => it['dicek'] == true),
+          };
+        }(),
+    ];
   }
 
   void _timpaPendingDicekDariNota(
     List<Map<String, dynamic>> nota,
     List<String> daftarRute,
   ) {
-    setState(() {
-      _truk = [
-        for (final row in _truk)
-          () {
-            final rute = row['rute_pengirim']?.toString() ?? '';
-            if (!daftarRute.contains(rute)) return row;
-            final punya = nota
-                .where((n) => n['rute_pengirim']?.toString() == rute)
-                .toList();
-            return {
-              ...row,
+    _truk = [
+      for (final row in _truk)
+        () {
+          final rute = row['rute_pengirim']?.toString() ?? '';
+          if (!daftarRute.contains(rute)) return row;
+          final punya = nota
+              .where((n) => n['rute_pengirim']?.toString() == rute)
+              .toList();
+          return {
+            ...row,
               'pending_dicek':
                   punya.isNotEmpty && punya.every((n) => n['dicek'] == true),
-            };
-          }(),
-      ];
-    });
+          };
+        }(),
+    ];
   }
 
   Future<void> _dialogTabelBarang({
@@ -3301,6 +3297,7 @@ class _SetoranScreenState extends State<SetoranScreen> {
         );
       },
     );
+    if (mounted) setState(() {});
   }
 
   Future<void> _dialogRincianPending(Map<String, dynamic> nota) async {
@@ -3410,14 +3407,12 @@ class _SetoranScreenState extends State<SetoranScreen> {
 
   Future<void> _ubahHadir(String peran, String kunci, bool hadir) async {
     if (kunci.isEmpty) return;
-    setState(() {
-      _kotor = true;
-      if (peran == 'pengirim') {
-        _pengirim = _timpaHadir(_pengirim, kunci, hadir);
-      } else {
-        _gudang = _timpaHadir(_gudang, kunci, hadir);
-      }
-    });
+    _kotor = true;
+    if (peran == 'pengirim') {
+      _pengirim = _timpaHadir(_pengirim, kunci, hadir);
+    } else {
+      _gudang = _timpaHadir(_gudang, kunci, hadir);
+    }
   }
 
   List<String> _bendera(Map<String, dynamic> row) {
@@ -4100,13 +4095,10 @@ class _SetoranScreenState extends State<SetoranScreen> {
             width: 24,
             height: 24,
             child: Center(
-              child: Checkbox(
-                value: hadir,
-                visualDensity: VisualDensity.compact,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                onChanged: boleh
-                    ? (v) => _ubahHadir(peran, kunci, v ?? false)
-                    : null,
+              child: _CekHadir(
+                hadir: hadir,
+                boleh: boleh,
+                onChanged: (v) => _ubahHadir(peran, kunci, v),
               ),
             ),
           ),
@@ -4529,32 +4521,29 @@ class _SetoranScreenState extends State<SetoranScreen> {
   Widget _kolomKananAtas({
     required double tinggiKartuMasuk,
     required double tinggiBarisSupplier,
+    required double tinggiKolom,
   }) {
-    return LayoutBuilder(
-      builder: (context, batas) {
-        const tetapTombol = _celahKartu;
-        var hMasuk = tinggiKartuMasuk;
-        final sisa = batas.maxHeight - tetapTombol;
-        if (sisa.isFinite && sisa < hMasuk + 96) {
-          hMasuk = (sisa - 96).clamp(96, hMasuk);
-        }
-        final hSupplier =
-            ((hMasuk - 8 - _tinggiTombolAksi - 8 - 6 - _tinggiTotalMasuk - 10) /
-                    _barisSupplierTampil)
-                .clamp(18.0, tinggiBarisSupplier);
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(child: _kartuMutasiHari()),
-            const SizedBox(height: _celahKartu),
-            SizedBox(
-              height: hMasuk,
-              width: double.infinity,
-              child: _kartuBarangMasukHari(tinggiBarisSupplier: hSupplier),
-            ),
-          ],
-        );
-      },
+    const tetapTombol = _celahKartu;
+    var hMasuk = tinggiKartuMasuk;
+    final sisa = tinggiKolom - tetapTombol;
+    if (sisa.isFinite && sisa < hMasuk + 96) {
+      hMasuk = (sisa - 96).clamp(96, hMasuk);
+    }
+    final hSupplier =
+        ((hMasuk - 8 - _tinggiTombolAksi - 8 - 6 - _tinggiTotalMasuk - 10) /
+                _barisSupplierTampil)
+            .clamp(18.0, tinggiBarisSupplier);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(child: _kartuMutasiHari()),
+        const SizedBox(height: _celahKartu),
+        SizedBox(
+          height: hMasuk,
+          width: double.infinity,
+          child: _kartuBarangMasukHari(tinggiBarisSupplier: hSupplier),
+        ),
+      ],
     );
   }
 
@@ -4676,15 +4665,20 @@ class _SetoranScreenState extends State<SetoranScreen> {
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _kartuRuteSetoran(tinggiBaris: tinggiBaris),
+                        RepaintBoundary(
+                          child: _kartuRuteSetoran(tinggiBaris: tinggiBaris),
+                        ),
                         const SizedBox(width: _celahSampingKartu),
                         Expanded(
                           child: SizedBox(
                             height: tinggiRute,
                             width: double.infinity,
-                            child: _kolomKananAtas(
-                              tinggiKartuMasuk: tinggiMasuk,
-                              tinggiBarisSupplier: tinggiBarisSupplier,
+                            child: RepaintBoundary(
+                              child: _kolomKananAtas(
+                                tinggiKartuMasuk: tinggiMasuk,
+                                tinggiBarisSupplier: tinggiBarisSupplier,
+                                tinggiKolom: tinggiRute,
+                              ),
                             ),
                           ),
                         ),
@@ -4694,13 +4688,15 @@ class _SetoranScreenState extends State<SetoranScreen> {
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _kartuJumlahSetoran(tinggiBaris: tinggiBaris),
+                        RepaintBoundary(
+                          child: _kartuJumlahSetoran(tinggiBaris: tinggiBaris),
+                        ),
                         const SizedBox(width: _celahSampingKartu),
                         Expanded(
                           child: SizedBox(
                             height: tinggiJumlah,
                             width: double.infinity,
-                            child: _kartuOpnameHari(),
+                            child: RepaintBoundary(child: _kartuOpnameHari()),
                           ),
                         ),
                       ],
@@ -4726,6 +4722,47 @@ class _SetoranScreenState extends State<SetoranScreen> {
                 );
               },
             ),
+    );
+  }
+}
+
+class _CekHadir extends StatefulWidget {
+  const _CekHadir({
+    required this.hadir,
+    required this.boleh,
+    required this.onChanged,
+  });
+
+  final bool hadir;
+  final bool boleh;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  State<_CekHadir> createState() => _CekHadirState();
+}
+
+class _CekHadirState extends State<_CekHadir> {
+  late bool _hadir = widget.hadir;
+
+  @override
+  void didUpdateWidget(covariant _CekHadir oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.hadir != widget.hadir) _hadir = widget.hadir;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Checkbox(
+      value: _hadir,
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      onChanged: widget.boleh
+          ? (v) {
+              final hadir = v ?? false;
+              setState(() => _hadir = hadir);
+              widget.onChanged(hadir);
+            }
+          : null,
     );
   }
 }

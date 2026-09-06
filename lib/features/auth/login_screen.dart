@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -11,14 +13,55 @@ class AuthController extends ChangeNotifier {
   bool masuk = false;
   String nama = 'Admin';
   String? error;
+  Timer? _jangkar;
 
   bool _peranAdmin(String? peran) =>
       (peran ?? '').trim().toLowerCase() == 'admin';
 
   bool _loginMati(dynamic v) {
+    if (v is bool) return !v;
     if (v == false || v == 0) return true;
     final t = v?.toString().trim().toLowerCase() ?? '';
     return t == 'false' || t == 'f' || t == '0';
+  }
+
+  bool _cloudSedangMasuk(dynamic v) => !_loginMati(v) && v != null;
+
+  void _mulaiJangkar() {
+    _jangkar?.cancel();
+    _jangkar = Timer.periodic(const Duration(seconds: 15), (_) {
+      unawaited(_cekJangkar());
+    });
+  }
+
+  void _berhentiJangkar() {
+    _jangkar?.cancel();
+    _jangkar = null;
+  }
+
+  Future<void> _cekJangkar() async {
+    if (!masuk) return;
+    if (!await NetworkProbe.hasConnection()) return;
+    final saved = await StaffPrefs.savedEmail();
+    if (saved == null || saved.trim().isEmpty) return;
+    try {
+      final profil = await _profil(saved);
+      if (profil == null) return;
+      if (_loginMati(profil['is_login']) ||
+          !_peranAdmin(profil['peran']?.toString())) {
+        await _keluarLokal();
+        _berhentiJangkar();
+        masuk = false;
+        error = 'Akun dikeluarkan dari server. Masuk lagi jika diizinkan.';
+        notifyListeners();
+      }
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    _berhentiJangkar();
+    super.dispose();
   }
 
   Future<Map<String, dynamic>?> _profil(String email) async {
@@ -49,6 +92,7 @@ class AuthController extends ChangeNotifier {
         muat = false;
         masuk = true;
         notifyListeners();
+        _mulaiJangkar();
         return;
       }
       try {
@@ -57,6 +101,7 @@ class AuthController extends ChangeNotifier {
             _loginMati(profil['is_login']) ||
             !_peranAdmin(profil['peran']?.toString())) {
           await _keluarLokal();
+          _berhentiJangkar();
           muat = false;
           masuk = false;
           notifyListeners();
@@ -66,6 +111,7 @@ class AuthController extends ChangeNotifier {
         muat = false;
         masuk = true;
         notifyListeners();
+        _mulaiJangkar();
         return;
       } catch (_) {}
     }
@@ -74,6 +120,7 @@ class AuthController extends ChangeNotifier {
         await _sb.auth.signOut();
       } catch (_) {}
     }
+    _berhentiJangkar();
     muat = false;
     masuk = false;
     notifyListeners();
@@ -102,9 +149,18 @@ class AuthController extends ChangeNotifier {
       }
       final current = res.user!.email!;
       final profil = await _profil(current);
+      final localIsLogin = await StaffPrefs.localIsLogin();
       if (!_peranAdmin(profil?['peran']?.toString())) {
         await _sb.auth.signOut();
         error = 'Akun ini bukan admin. Gunakan akun peran admin.';
+        muat = false;
+        notifyListeners();
+        return;
+      }
+      if (_cloudSedangMasuk(profil?['is_login']) && !localIsLogin) {
+        await _sb.auth.signOut();
+        error =
+            'Akun ini sedang dipakai di perangkat lain. Keluar dulu di situ, atau hubungi admin.';
         muat = false;
         notifyListeners();
         return;
@@ -115,6 +171,7 @@ class AuthController extends ChangeNotifier {
       muat = false;
       masuk = true;
       notifyListeners();
+      _mulaiJangkar();
     } on AuthException catch (e) {
       error = e.message.toLowerCase().contains('invalid')
           ? 'Email atau kata sandi tidak sesuai.'
@@ -138,6 +195,7 @@ class AuthController extends ChangeNotifier {
       await _sb.rpc('apply_own_is_login', params: {'p_is_login': false});
     } catch (_) {}
     await _keluarLokal();
+    _berhentiJangkar();
     masuk = false;
     notifyListeners();
   }
