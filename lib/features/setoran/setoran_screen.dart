@@ -13,6 +13,7 @@ import '../../core/network_probe.dart';
 import '../../core/ui_feedback.dart';
 import '../../core/unduh_berkas.dart';
 import '../auth/login_screen.dart';
+import '../gaji/gaji_dialog.dart';
 import 'mutasi_csv.dart';
 import 'barang_masuk_csv.dart';
 
@@ -69,6 +70,7 @@ class _SetoranScreenState extends State<SetoranScreen> {
   List<Map<String, dynamic>> _pengirim = [];
   List<Map<String, dynamic>> _gudang = [];
   List<Map<String, dynamic>> _masuk = [];
+  int _ongkirHari = 0;
   bool _opnameAda = false;
   String _opnameStatus = '';
   int _opnameSelisihSku = 0;
@@ -109,7 +111,7 @@ class _SetoranScreenState extends State<SetoranScreen> {
       8 +
       _barisSupplierTampil * _tinggiBarisSupplier +
       6 +
-      _tinggiTotalMasuk +
+      _tinggiTotalMasuk * 2 +
       10;
 
   ButtonStyle get _gayaTombolBiru => FilledButton.styleFrom(
@@ -356,6 +358,15 @@ class _SetoranScreenState extends State<SetoranScreen> {
     return false;
   }
 
+  Future<void> _dialogGaji() async {
+    if (!await _adaNet()) return;
+    if (!mounted) return;
+    final berubah = await bukaDialogGaji(context, acuan: _hari);
+    if (berubah && mounted && !_kotor) {
+      await _muatData(buangDraf: true);
+    }
+  }
+
   Future<void> _muatData({
     bool layarPenuh = false,
     bool buangDraf = false,
@@ -428,6 +439,27 @@ class _SetoranScreenState extends State<SetoranScreen> {
       } catch (_) {
         masuk = [];
       }
+      var ongkirHari = 0;
+      try {
+        final rawOngkir = await _sb
+            .from('ongkir_belanja_hari')
+            .select('jumlah')
+            .eq('tanggal', _iso)
+            .maybeSingle();
+        ongkirHari = _angka(rawOngkir?['jumlah']);
+      } catch (_) {
+        try {
+          final mentah = await _sb.rpc(
+            'gaji_lihat_minggu',
+            params: {'p_tanggal': _iso},
+          );
+          if (mentah is Map) {
+            ongkirHari = _angka(
+              Map<String, dynamic>.from(mentah)['ongkir_hari'],
+            );
+          }
+        } catch (_) {}
+      }
       var opnameAda = false;
       var opnameStatus = '';
       var opnameSku = 0;
@@ -456,6 +488,7 @@ class _SetoranScreenState extends State<SetoranScreen> {
         _pengirim = pengirim;
         _gudang = gudang;
         _masuk = masuk;
+        _ongkirHari = ongkirHari;
         _opnameAda = opnameAda;
         _opnameStatus = opnameStatus;
         _opnameSelisihSku = opnameSku;
@@ -474,6 +507,7 @@ class _SetoranScreenState extends State<SetoranScreen> {
           _pengirim = [];
           _gudang = [];
           _masuk = [];
+          _ongkirHari = 0;
           _opnameAda = false;
           _opnameStatus = '';
           _opnameSelisihSku = 0;
@@ -562,6 +596,22 @@ class _SetoranScreenState extends State<SetoranScreen> {
       );
       return;
     }
+
+    var ongkirHari = 0;
+    var ongkirMingguTotal = 0;
+    var ongkirKunci = _truk.any((r) => r['gaji_kunci'] == true);
+    try {
+      final mentah = await _sb.rpc(
+        'gaji_lihat_minggu',
+        params: {'p_tanggal': _iso},
+      );
+      if (mentah is Map) {
+        final data = Map<String, dynamic>.from(mentah);
+        ongkirHari = _angka(data['ongkir_hari'] ?? data['ongkir_belanja']);
+        ongkirMingguTotal = _angka(data['ongkir_belanja']);
+        if (data['status']?.toString() == 'kunci') ongkirKunci = true;
+      }
+    } catch (_) {}
     if (!mounted) {
       for (final b in baris) {
         b.dispose();
@@ -575,10 +625,20 @@ class _SetoranScreenState extends State<SetoranScreen> {
     final namaBaruCtrl = TextEditingController();
     final qtyBaruCtrl = TextEditingController();
     final hargaBaruCtrl = TextEditingController();
+    final ongkirCtrl = TextEditingController(text: formatUang(ongkirHari));
+    var ongkirTersimpan = ongkirHari;
+    var ongkirProses = false;
     var saran = <({String kode, String nama, int harga})>[];
     var tampilSkuBaru = false;
     var tampilSupplierBaru = false;
     Timer? tunda;
+    final seninMinggu = DateTime(
+      _hari.year,
+      _hari.month,
+      _hari.day,
+    ).subtract(Duration(days: _hari.weekday - 1));
+    final labelMinggu =
+        '${DateFormat('d/MM').format(seninMinggu)} – ${DateFormat('d/MM').format(seninMinggu.add(const Duration(days: 5)))}';
 
     await showDialog<void>(
       context: context,
@@ -951,15 +1011,52 @@ class _SetoranScreenState extends State<SetoranScreen> {
             int totalHariIni() =>
                 baris.fold<int>(0, (a, b) => a + b.nilaiSudah) + totalInput();
 
-            void simpan() {
-              if (idSupplier <= 0) {
+            Future<bool> simpanOngkir() async {
+              if (ongkirKunci) return true;
+              final nilai = angkaTeks(ongkirCtrl.text);
+              if (nilai == ongkirTersimpan) return true;
+              setLocal(() => ongkirProses = true);
+              try {
+                final ok = await _sb.rpc(
+                  'gaji_set_ongkir_belanja',
+                  params: {'p_tanggal': _iso, 'p_ongkir': nilai},
+                );
+                if (!mounted) return false;
+                if (ok == true) {
+                  ongkirTersimpan = nilai;
+                  return true;
+                }
                 showAppSnackBar(
                   this.context,
-                  message: 'Pilih atau tambah supplier dulu.',
+                  message:
+                      'Ongkir gagal disimpan. Periode gaji mungkin sudah dikunci.',
                   warna: AppSnackBarTone.kuning,
                 );
-                return;
+                return false;
+              } catch (_) {
+                if (mounted) {
+                  showAppSnackBar(
+                    this.context,
+                    message: 'Gagal menyimpan ongkir belanja.',
+                  );
+                }
+                return false;
+              } finally {
+                if (ctx.mounted) setLocal(() => ongkirProses = false);
               }
+            }
+
+            Future<void> simpan() async {
+              final kirim = [
+                for (final b in baris)
+                  if (b.kode.isNotEmpty && b.qty > 0 && b.harga > 0)
+                    {
+                      'kode_barang': b.kode,
+                      'nama_barang': b.nama,
+                      'qty': b.qty,
+                      'harga_beli': b.harga,
+                    },
+              ];
               for (final b in baris) {
                 if (b.kode.isEmpty || b.qty <= 0) continue;
                 if (b.harga <= 0) {
@@ -971,45 +1068,40 @@ class _SetoranScreenState extends State<SetoranScreen> {
                   return;
                 }
               }
-              final kirim = [
-                for (final b in baris)
-                  if (b.kode.isNotEmpty && b.qty > 0 && b.harga > 0)
-                    {
-                      'kode_barang': b.kode,
-                      'nama_barang': b.nama,
-                      'qty': b.qty,
-                      'harga_beli': b.harga,
-                    },
-              ];
-              if (kirim.isEmpty) {
-                showAppSnackBar(
-                  this.context,
-                  message: 'Isi qty dan harga beli.',
-                  warna: AppSnackBarTone.kuning,
-                );
-                return;
+              if (kirim.isNotEmpty) {
+                if (idSupplier <= 0) {
+                  showAppSnackBar(
+                    this.context,
+                    message: 'Pilih atau tambah supplier dulu.',
+                    warna: AppSnackBarTone.kuning,
+                  );
+                  return;
+                }
+                final namaSup = daftarSupplier
+                    .where((s) => s.id == idSupplier)
+                    .map((s) => s.nama)
+                    .firstWhere((_) => true, orElse: () => 'Supplier');
+                _drafMasuk.add((idSupplier: idSupplier, baris: kirim));
+                setState(() {
+                  _kotor = true;
+                  _masuk = [
+                    ..._masuk,
+                    for (final b in kirim)
+                      {
+                        'id_supplier': idSupplier,
+                        'nama_supplier': namaSup,
+                        'kode_barang': b['kode_barang'],
+                        'nama_barang': b['nama_barang'],
+                        'qty': b['qty'],
+                        'harga_beli': b['harga_beli'],
+                        'nilai': _angka(b['qty']) * _angka(b['harga_beli']),
+                      },
+                  ];
+                });
               }
-              final namaSup = daftarSupplier
-                  .where((s) => s.id == idSupplier)
-                  .map((s) => s.nama)
-                  .firstWhere((_) => true, orElse: () => 'Supplier');
-              _drafMasuk.add((idSupplier: idSupplier, baris: kirim));
-              setState(() {
-                _kotor = true;
-                _masuk = [
-                  ..._masuk,
-                  for (final b in kirim)
-                    {
-                      'id_supplier': idSupplier,
-                      'nama_supplier': namaSup,
-                      'kode_barang': b['kode_barang'],
-                      'nama_barang': b['nama_barang'],
-                      'qty': b['qty'],
-                      'harga_beli': b['harga_beli'],
-                      'nilai': _angka(b['qty']) * _angka(b['harga_beli']),
-                    },
-                ];
-              });
+              if (!await simpanOngkir()) return;
+              final ongkir = angkaTeks(ongkirCtrl.text);
+              if (mounted) setState(() => _ongkirHari = ongkir);
               if (ctx.mounted) Navigator.pop(ctx);
             }
 
@@ -1120,6 +1212,27 @@ class _SetoranScreenState extends State<SetoranScreen> {
                     Text(
                       'Pilih supplier dulu. Harga beli disimpan per supplier. Qty × harga, lalu ditambah ke stok.',
                       style: gaya.copyWith(color: Colors.grey.shade700),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: ongkirCtrl,
+                      enabled: !ongkirKunci && !ongkirProses,
+                      keyboardType: TextInputType.number,
+                      style: gaya,
+                      textAlign: TextAlign.right,
+                      inputFormatters: const [FormatRibuan()],
+                      decoration: dekor(
+                        label: 'Ongkir belanja hari ini',
+                      ).copyWith(prefixText: 'Rp '),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        ongkirKunci
+                            ? 'Periode gaji terkunci. Ongkir tidak bisa diubah.'
+                            : 'Total minggu $labelMinggu: Rp ${formatUang(ongkirMingguTotal)}',
+                        style: gaya.copyWith(color: Colors.grey.shade700),
+                      ),
                     ),
                     const SizedBox(height: 10),
                     DropdownButtonFormField<int>(
@@ -1403,7 +1516,10 @@ class _SetoranScreenState extends State<SetoranScreen> {
                   onPressed: () => Navigator.pop(ctx),
                   child: const Text('Tutup'),
                 ),
-                FilledButton(onPressed: simpan, child: const Text('Pakai')),
+                FilledButton(
+                  onPressed: ongkirProses ? null : simpan,
+                  child: const Text('Simpan'),
+                ),
               ],
             );
           },
@@ -1418,6 +1534,7 @@ class _SetoranScreenState extends State<SetoranScreen> {
     namaBaruCtrl.dispose();
     qtyBaruCtrl.dispose();
     hargaBaruCtrl.dispose();
+    ongkirCtrl.dispose();
     for (final b in baris) {
       b.dispose();
     }
@@ -3813,13 +3930,14 @@ class _SetoranScreenState extends State<SetoranScreen> {
                     if (bendera.isNotEmpty)
                       Text(
                         bendera.join(' · '),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                        maxLines: 2,
+                        overflow: TextOverflow.clip,
                         textAlign: TextAlign.center,
                         style: const TextStyle(
-                          fontSize: _teksIsi,
+                          fontSize: 10,
                           height: 1.15,
                           color: Colors.red,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                   ],
@@ -4131,39 +4249,54 @@ class _SetoranScreenState extends State<SetoranScreen> {
   }
 
   Widget _kartuAbsensiHari() {
-    if (_pengirim.isEmpty && _gudang.isEmpty) {
-      return const SizedBox.shrink();
-    }
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              if (_pengirim.isNotEmpty)
-                _grupAbsensi(
-                  judul: 'Pengirim',
-                  peran: 'pengirim',
-                  orang: _pengirim,
+        padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
+        child: Row(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    if (_pengirim.isNotEmpty)
+                      _grupAbsensi(
+                        judul: 'Pengirim',
+                        peran: 'pengirim',
+                        orang: _pengirim,
+                      ),
+                    if (_pengirim.isNotEmpty && _gudang.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: SizedBox(
+                          height: 18,
+                          child: VerticalDivider(
+                            width: 1,
+                            thickness: 1,
+                            color: Colors.grey.shade400,
+                          ),
+                        ),
+                      ),
+                    if (_gudang.isNotEmpty)
+                      _grupAbsensi(
+                        judul: 'Gudang',
+                        peran: 'gudang',
+                        orang: _gudang,
+                      ),
+                  ],
                 ),
-              if (_pengirim.isNotEmpty && _gudang.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: SizedBox(
-                    height: 18,
-                    child: VerticalDivider(
-                      width: 1,
-                      thickness: 1,
-                      color: Colors.grey.shade400,
-                    ),
-                  ),
-                ),
-              if (_gudang.isNotEmpty)
-                _grupAbsensi(judul: 'Gudang', peran: 'gudang', orang: _gudang),
-            ],
-          ),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Gaji',
+              onPressed: _proses ? null : _dialogGaji,
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 28),
+              icon: const Icon(Icons.paid_outlined),
+            ),
+          ],
         ),
       ),
     );
@@ -4421,6 +4554,32 @@ class _SetoranScreenState extends State<SetoranScreen> {
     );
   }
 
+  Widget _barisRekapMasuk(String label, int nilai) {
+    return SizedBox(
+      height: _tinggiTotalMasuk,
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: _teksIsi,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          Text(
+            formatUang(nilai),
+            style: const TextStyle(
+              fontSize: _teksIsi,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _kartuBarangMasukHari({required double tinggiBarisSupplier}) {
     final urutan = <int>[];
     final namaSup = <int, String>{};
@@ -4488,29 +4647,8 @@ class _SetoranScreenState extends State<SetoranScreen> {
                       ),
               ),
               const SizedBox(height: 6),
-              SizedBox(
-                height: _tinggiTotalMasuk,
-                child: Row(
-                  children: [
-                    const Expanded(
-                      child: Text(
-                        'Total',
-                        style: TextStyle(
-                          fontSize: _teksIsi,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    Text(
-                      formatUang(total),
-                      style: const TextStyle(
-                        fontSize: _teksIsi,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              _barisRekapMasuk('Total', total),
+              _barisRekapMasuk('Ongkir belanja', _ongkirHari),
             ],
           ),
         ),
@@ -4530,7 +4668,7 @@ class _SetoranScreenState extends State<SetoranScreen> {
       hMasuk = (sisa - 96).clamp(96, hMasuk);
     }
     final hSupplier =
-        ((hMasuk - 8 - _tinggiTombolAksi - 8 - 6 - _tinggiTotalMasuk - 10) /
+        ((hMasuk - 8 - _tinggiTombolAksi - 8 - 6 - _tinggiTotalMasuk * 2 - 10) /
                 _barisSupplierTampil)
             .clamp(18.0, tinggiBarisSupplier);
     return Column(
@@ -4617,13 +4755,8 @@ class _SetoranScreenState extends State<SetoranScreen> {
           ? const Center(child: CircularProgressIndicator())
           : LayoutBuilder(
               builder: (context, constraints) {
-                final adaAbsen = _pengirim.isNotEmpty || _gudang.isNotEmpty;
-                final tinggiKartuAbsen = adaAbsen
-                    ? 12 + _tinggiBarisAbsensi
-                    : 0.0;
-                final tinggiAbsen = adaAbsen
-                    ? _celahKartu + tinggiKartuAbsen
-                    : 0.0;
+                final tinggiKartuAbsen = 12 + _tinggiBarisAbsensi;
+                final tinggiAbsen = _celahKartu + tinggiKartuAbsen;
                 final tinggiTersedia =
                     constraints.maxHeight - _padHalamanAtas - _padHalamanBawah;
                 final tinggiBlok = (tinggiTersedia - tinggiAbsen).clamp(
@@ -4655,7 +4788,7 @@ class _SetoranScreenState extends State<SetoranScreen> {
                   tinggiMasuk = maksMasuk;
                 }
                 final tinggiBarisSupplier =
-                    ((tinggiMasuk - 74) / _barisSupplierTampil).clamp(
+                    ((tinggiMasuk - 96) / _barisSupplierTampil).clamp(
                       18.0,
                       _tinggiBarisSupplier,
                     );
@@ -4701,14 +4834,12 @@ class _SetoranScreenState extends State<SetoranScreen> {
                         ),
                       ],
                     ),
-                    if (adaAbsen) ...[
-                      const SizedBox(height: _celahKartu),
-                      SizedBox(
-                        height: tinggiKartuAbsen,
-                        width: double.infinity,
-                        child: _kartuAbsensiHari(),
-                      ),
-                    ],
+                    const SizedBox(height: _celahKartu),
+                    SizedBox(
+                      height: tinggiKartuAbsen,
+                      width: double.infinity,
+                      child: _kartuAbsensiHari(),
+                    ),
                   ],
                 );
                 return Padding(
