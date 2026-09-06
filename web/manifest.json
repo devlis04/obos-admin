@@ -1,6 +1,6 @@
 {
-    "name": "obos_admin",
-    "short_name": "obos_admin",
+    "name": "Obos Admin",
+    "short_name": "Obos Admin",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
