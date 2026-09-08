@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../auth/login_screen.dart';
+import '../karyawan/karyawan_screen.dart';
 import '../setoran/setoran_screen.dart';
 
 class AdminShell extends StatefulWidget {
@@ -13,6 +14,7 @@ class AdminShell extends StatefulWidget {
 
 class _AdminShellState extends State<AdminShell> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
+  int _halaman = 0;
 
   void _bukaMenu() => _scaffoldKey.currentState?.openDrawer();
 
@@ -21,8 +23,11 @@ class _AdminShellState extends State<AdminShell> {
     return Scaffold(
       key: _scaffoldKey,
       drawer: NavigationDrawer(
-        selectedIndex: 0,
-        onDestinationSelected: (_) => Navigator.of(context).pop(),
+        selectedIndex: _halaman,
+        onDestinationSelected: (i) {
+          Navigator.of(context).pop();
+          setState(() => _halaman = i);
+        },
         children: [
           const Padding(
             padding: EdgeInsets.fromLTRB(28, 20, 16, 12),
@@ -35,6 +40,11 @@ class _AdminShellState extends State<AdminShell> {
             icon: Icon(Icons.payments_outlined),
             selectedIcon: Icon(Icons.payments),
             label: Text('Setoran'),
+          ),
+          const NavigationDrawerDestination(
+            icon: Icon(Icons.badge_outlined),
+            selectedIcon: Icon(Icons.badge),
+            label: Text('Data karyawan'),
           ),
           const Padding(
             padding: EdgeInsets.fromLTRB(28, 16, 28, 8),
@@ -53,7 +63,9 @@ class _AdminShellState extends State<AdminShell> {
           ),
         ],
       ),
-      body: SetoranScreen(auth: widget.auth, bukaMenu: _bukaMenu),
+      body: _halaman == 0
+          ? SetoranScreen(auth: widget.auth, bukaMenu: _bukaMenu)
+          : KaryawanScreen(auth: widget.auth, bukaMenu: _bukaMenu),
     );
   }
 }

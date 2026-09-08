@@ -13,7 +13,7 @@ import '../../core/network_probe.dart';
 import '../../core/ui_feedback.dart';
 import '../../core/unduh_berkas.dart';
 import '../auth/login_screen.dart';
-import '../gaji/gaji_dialog.dart';
+import '../gaji/gaji_screen.dart';
 import 'mutasi_csv.dart';
 import 'barang_masuk_csv.dart';
 
@@ -89,7 +89,8 @@ class _SetoranScreenState extends State<SetoranScreen> {
   final Map<String, List<Map<String, dynamic>>> _drafRetur = {};
   final Map<String, bool> _drafPendingCek = {};
   final Map<String, String> _drafPendingRute = {};
-  final Map<String, ({List<String> rute, bool cek})> _drafBatalCek = {};
+  final Map<String, ({List<String> rute, bool cek, int fisik})> _drafBatalCek =
+      {};
 
   String get _iso => DateFormat('yyyy-MM-dd').format(_hari);
 
@@ -361,8 +362,12 @@ class _SetoranScreenState extends State<SetoranScreen> {
   Future<void> _dialogGaji() async {
     if (!await _adaNet()) return;
     if (!mounted) return;
-    final berubah = await bukaDialogGaji(context, acuan: _hari);
-    if (berubah && mounted && !_kotor) {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => GajiScreen(acuan: _hari),
+      ),
+    );
+    if (mounted && !_kotor) {
       await _muatData(buangDraf: true);
     }
   }
@@ -416,11 +421,24 @@ class _SetoranScreenState extends State<SetoranScreen> {
           final k = m['nama_kunci']?.toString() ?? '';
           m['hadir'] = hadir[k] == true;
           return m;
+        }).where((m) {
+          final peran = (m['peran']?.toString() ?? '').trim().toLowerCase();
+          return peran == 'pengirim' || peran == 'gudang';
         }).toList();
         pengirim = isi
-            .where((m) => m['peran']?.toString() == 'pengirim')
+            .where(
+              (m) =>
+                  (m['peran']?.toString() ?? '').trim().toLowerCase() ==
+                  'pengirim',
+            )
             .toList();
-        gudang = isi.where((m) => m['peran']?.toString() == 'gudang').toList();
+        gudang = isi
+            .where(
+              (m) =>
+                  (m['peran']?.toString() ?? '').trim().toLowerCase() ==
+                  'gudang',
+            )
+            .toList();
       } catch (_) {
         pengirim = [];
         gudang = [];
@@ -1579,7 +1597,12 @@ class _SetoranScreenState extends State<SetoranScreen> {
       );
     }
     final semua = raw.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-    final beda = semua.where((r) => _angka(r['selisih_qty']) != 0).toList();
+    num qty(dynamic v) {
+      if (v is num) return v;
+      return num.tryParse(v?.toString().replaceAll(',', '.') ?? '') ?? 0;
+    }
+
+    final beda = semua.where((r) => qty(r['selisih_qty']) != 0).toList();
     final nilai = beda.fold<int>(0, (a, r) => a + _angka(r['nilai_selisih']));
     return (
       ada: true,
@@ -1655,7 +1678,7 @@ class _SetoranScreenState extends State<SetoranScreen> {
                     Text(
                       '${r['kode_barang']}  ·  sistem ${r['sisa'] ?? 0}  ·  '
                       'fisik ${r['stok_fisik'] ?? 0}  ·  '
-                      'selisih ${_angka(r['selisih_qty'])}  ·  '
+                      'selisih ${r['selisih_qty'] ?? 0}  ·  '
                       'Rp ${formatUang(_angka(r['nilai_selisih']))}',
                       style: TextStyle(
                         fontSize: 13,
@@ -1856,11 +1879,12 @@ class _SetoranScreenState extends State<SetoranScreen> {
       }
       for (final e in _drafBatalCek.entries) {
         final ok = await _sb.rpc(
-          'admin_setoran_batal_cek_set',
+          'admin_setoran_batal_terima',
           params: {
             'p_tanggal': _iso,
             'p_rute': e.value.rute,
             'p_kunci': e.key,
+            'p_qty_fisik': e.value.fisik,
             'p_cek': e.value.cek,
           },
         );
@@ -3295,14 +3319,15 @@ class _SetoranScreenState extends State<SetoranScreen> {
         'admin_setoran_batal_cek_lihat',
         params: {'p_tanggal': _iso},
       );
-      final cek = <String>{};
+      final cek = <String, int>{};
       if (rawCek is List) {
         for (final e in rawCek) {
           if (e is! Map) continue;
           final m = Map<String, dynamic>.from(e);
           final r = m['rute_pengirim']?.toString() ?? '';
           final k = (m['kunci_barang']?.toString() ?? '').trim();
-          if (r.isNotEmpty && k.isNotEmpty) cek.add('$r|$k');
+          if (r.isEmpty || k.isEmpty) continue;
+          cek['$r|$k'] = _angka(m['qty_fisik']);
         }
       }
       for (final it in items) {
@@ -3310,11 +3335,14 @@ class _SetoranScreenState extends State<SetoranScreen> {
         final ruteList = List<String>.from(
           (it['rute_list'] as List?) ?? daftarRute,
         );
-        it['dicek'] =
-            ruteList.isNotEmpty &&
-            ruteList.every((r) => cek.contains('$r|$kunci'));
+        final fisikSimpan = ruteList.isEmpty
+            ? null
+            : cek['${ruteList.first}|$kunci'];
+        it['dicek'] = fisikSimpan != null;
+        it['qty_fisik'] = fisikSimpan ?? _angka(it['qty']);
         if (_drafBatalCek.containsKey(kunci)) {
           it['dicek'] = _drafBatalCek[kunci]!.cek;
+          it['qty_fisik'] = _drafBatalCek[kunci]!.fisik;
         }
       }
     } catch (_) {}
@@ -3333,7 +3361,36 @@ class _SetoranScreenState extends State<SetoranScreen> {
               );
               if (kunci.isEmpty || ruteList.isEmpty) return;
               it['dicek'] = cek;
-              _drafBatalCek[kunci] = (rute: ruteList, cek: cek);
+              if (cek && _angka(it['qty_fisik']) <= 0) {
+                it['qty_fisik'] = _angka(it['qty']);
+              }
+              _drafBatalCek[kunci] = (
+                rute: ruteList,
+                cek: cek,
+                fisik: _angka(it['qty_fisik']),
+              );
+              _kotor = true;
+              setLocal(() {});
+              _timpaBatalDicekDariItem(items, daftarRute);
+            }
+
+            void ubahFisik(Map<String, dynamic> it, String teks) {
+              final kunci = _kunciBarang(it);
+              final ruteList = List<String>.from(
+                (it['rute_list'] as List?) ?? daftarRute,
+              );
+              if (kunci.isEmpty || ruteList.isEmpty) return;
+              final klaim = _angka(it['qty']);
+              var fisik = angkaTeks(teks);
+              if (fisik > klaim) fisik = klaim;
+              if (fisik < 0) fisik = 0;
+              it['qty_fisik'] = fisik;
+              it['dicek'] = true;
+              _drafBatalCek[kunci] = (
+                rute: ruteList,
+                cek: true,
+                fisik: fisik,
+              );
               _kotor = true;
               setLocal(() {});
               _timpaBatalDicekDariItem(items, daftarRute);
@@ -3349,7 +3406,11 @@ class _SetoranScreenState extends State<SetoranScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Qty $totalQty · Batal Rp ${formatUang(totalNilai)}'),
+                  Text(
+                    'Qty $totalQty · Batal Rp ${formatUang(totalNilai)}\n'
+                    'Fisik = yang kembali ke gudang. Kurang dari klaim masuk kasbon (harga beli, pecah supir/kenek).',
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade800),
+                  ),
                   const SizedBox(height: 8),
                   DataTable(
                     border: _garisKolom,
@@ -3357,7 +3418,7 @@ class _SetoranScreenState extends State<SetoranScreen> {
                     horizontalMargin: 8,
                     headingRowHeight: 36,
                     dataRowMinHeight: 36,
-                    dataRowMaxHeight: 44,
+                    dataRowMaxHeight: 52,
                     columns: const [
                       DataColumn(
                         headingRowAlignment: MainAxisAlignment.center,
@@ -3370,7 +3431,12 @@ class _SetoranScreenState extends State<SetoranScreen> {
                       DataColumn(
                         headingRowAlignment: MainAxisAlignment.center,
                         numeric: true,
-                        label: Text('Qty'),
+                        label: Text('Klaim'),
+                      ),
+                      DataColumn(
+                        headingRowAlignment: MainAxisAlignment.center,
+                        numeric: true,
+                        label: Text('Fisik'),
                       ),
                       DataColumn(
                         headingRowAlignment: MainAxisAlignment.center,
@@ -3395,6 +3461,24 @@ class _SetoranScreenState extends State<SetoranScreen> {
                               ),
                               DataCell(Text(_labelBarang(it))),
                               DataCell(Text('${_angka(it['qty'])}')),
+                              DataCell(
+                                SizedBox(
+                                  width: 64,
+                                  child: TextFormField(
+                                    key: ValueKey(_kunciBarang(it)),
+                                    initialValue:
+                                        '${_angka(it['qty_fisik'])}',
+                                    enabled: !_proses,
+                                    keyboardType: TextInputType.number,
+                                    inputFormatters: const [FormatRibuan()],
+                                    decoration: const InputDecoration(
+                                      isDense: true,
+                                      border: InputBorder.none,
+                                    ),
+                                    onChanged: (t) => ubahFisik(it, t),
+                                  ),
+                                ),
+                              ),
                               DataCell(Text(formatUang(it['packed']))),
                             ],
                           ),
@@ -3524,8 +3608,10 @@ class _SetoranScreenState extends State<SetoranScreen> {
 
   Future<void> _ubahHadir(String peran, String kunci, bool hadir) async {
     if (kunci.isEmpty) return;
+    final p = peran.trim().toLowerCase();
+    if (p != 'pengirim' && p != 'gudang') return;
     _kotor = true;
-    if (peran == 'pengirim') {
+    if (p == 'pengirim') {
       _pengirim = _timpaHadir(_pengirim, kunci, hadir);
     } else {
       _gudang = _timpaHadir(_gudang, kunci, hadir);
