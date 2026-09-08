@@ -333,20 +333,8 @@ class _SetoranScreenState extends State<SetoranScreen> {
     return ya == true;
   }
 
-  String? _ruteDariBerita(String berita) {
-    final m = RegExp(
-      r'SBGP0([1-4])/(\d{2}-\d{2}-\d{4})',
-      caseSensitive: false,
-    ).firstMatch(berita);
-    if (m == null) return null;
-    try {
-      final tgl = DateFormat('dd-MM-yyyy').parseStrict(m.group(2)!);
-      if (DateFormat('yyyy-MM-dd').format(tgl) != _iso) return null;
-    } catch (_) {
-      return null;
-    }
-    return 'SBGP0${m.group(1)}';
-  }
+  String? _ruteDariBerita(String berita) =>
+      MutasiCsv.ruteDariBerita(berita, _iso);
 
   Future<bool> _adaNet() async {
     if (await NetworkProbe.hasConnection()) return true;
@@ -1960,18 +1948,21 @@ class _SetoranScreenState extends State<SetoranScreen> {
     }
     _idMutasiLokal -= hasil.baris.length;
     var id = _idMutasiLokal;
-    final baru = <Map<String, dynamic>>[
-      for (final b in hasil.baris)
-        {
-          'id': id++,
-          'tanggal_mutasi': b.tanggalMutasi,
-          'jumlah': b.jumlah,
-          'berita': b.berita,
-          'rekening_alias': b.rekening,
-          'rute_pengirim': _ruteDariBerita(b.berita) ?? '',
-          'status_cocok': '',
-        },
-    ];
+    final baru = <Map<String, dynamic>>[];
+    for (final b in hasil.baris) {
+      final rute = _ruteDariBerita(b.berita) ?? '';
+      baru.add({
+        'id': id++,
+        'tanggal_mutasi': b.tanggalMutasi,
+        'jumlah': b.jumlah,
+        'berita': b.berita,
+        'rekening_alias': b.rekening.isNotEmpty
+            ? b.rekening
+            : MutasiCsv.namaDariBerita(b.berita),
+        'rute_pengirim': rute,
+        'status_cocok': rute.isEmpty ? '' : 'cocok',
+      });
+    }
     setState(() {
       _kotor = true;
       _mutasiGantiIsi = true;
@@ -2009,24 +2000,6 @@ class _SetoranScreenState extends State<SetoranScreen> {
       _kotor = true;
       _mutasiGantiIsi = true;
       _pasangMutasiLokal([]);
-    });
-  }
-
-  Future<void> _setRuteMutasi(int id, String? rute) async {
-    setState(() {
-      _kotor = true;
-      _mutasi = [
-        for (final m in _mutasi)
-          if (_angka(m['id']) == id)
-            {
-              ...m,
-              'rute_pengirim': rute ?? '',
-              if ((rute ?? '').isNotEmpty) 'status_cocok': 'manual',
-            }
-          else
-            m,
-      ];
-      _truk = _timpaTransferMutasi(_truk, _mutasi);
     });
   }
 
@@ -4178,60 +4151,32 @@ class _SetoranScreenState extends State<SetoranScreen> {
       ),
     ];
     for (final m in _mutasi) {
-      final id = _angka(m['id']);
       final rute = m['rute_pengirim']?.toString();
       final status = m['status_cocok']?.toString() ?? '';
+      final rek = (m['rekening_alias']?.toString() ?? '').trim();
+      final berita = (m['berita']?.toString() ?? '').trim();
       baris.add(
         TableRow(
           children: [
             _selMutasi(Text('${m['tanggal_mutasi'] ?? '-'}', style: gaya)),
             _selMutasi(_uangSel(m['jumlah'], tebal: true)),
             _selMutasi(
-              Text(
-                '${m['rekening_alias'] ?? '-'}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: gaya,
+              Tooltip(
+                message: berita.isEmpty ? 'Rekening' : berita,
+                child: Text(
+                  rek.isEmpty ? '-' : rek,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: gaya,
+                ),
               ),
             ),
             _selMutasi(
-              DropdownButton<String>(
-                value: _rute.contains(rute) ? rute : '',
-                isDense: true,
-                isExpanded: true,
-                underline: const SizedBox.shrink(),
-                alignment: Alignment.center,
+              Text(
+                _rute.contains(rute) ? rute! : '-',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: gaya,
-                items: [
-                  const DropdownMenuItem(
-                    value: '',
-                    child: Text(
-                      '-',
-                      style: TextStyle(
-                        fontSize: _teksIsi,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  ..._rute.map(
-                    (r) => DropdownMenuItem(
-                      value: r,
-                      child: Text(
-                        r,
-                        style: const TextStyle(
-                          fontSize: _teksIsi,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-                onChanged: _proses
-                    ? null
-                    : (v) => _setRuteMutasi(
-                        id,
-                        (v == null || v.isEmpty) ? null : v,
-                      ),
               ),
               align: Alignment.center,
             ),

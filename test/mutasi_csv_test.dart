@@ -38,4 +38,108 @@ void main() {
       'TRSF E-BANKING CR 0109/FTTRX/SBGP04/02-09-2026',
     );
   });
+
+  test('CSV BCA korporat: kop, PEND, jumlah 8,520,000.00 CR', () {
+    const csv = '"Informasi Rekening - Mutasi Rekening"," "," "," "," ",\n'
+        '"No. rekening : 0552372610"\n'
+        '"Nama : ALHAN BERKAH MAKMUR PT"\n'
+        '"Periode : 08/09/2026 - 08/09/2026"\n'
+        '"Kode Mata Uang : Rp"\n'
+        '"Tanggal Transaksi","Keterangan","Cabang","Jumlah","Saldo"\n'
+        '"PEND","TRSF E-BANKING CR 0809/FTSCY/WS95031 100.00  NABILA IRAMA PUTRA  ","0000","100.00 CR","154,376,421.00"\n'
+        '"PEND","TRSF E-BANKING CR 0809/FTSCY/WS95271 8520000.00  SBGP 02, 08 SEPTEM BER 2026  AGUS TRIHERANTO ","0000","8,520,000.00 CR","162,896,421.00"\n'
+        '"PEND","BI-FAST TRSF DB 0809/TO_MANDIRI","0000","50,000.00 DB","162,846,421.00"\n'
+        '"Saldo Awal : 154,376,321.00"\n'
+        '"Mutasi Debet : 0.00","0"\n'
+        '"Mutasi Kredit : 77,001,100.00","5"\n'
+        '"Saldo Akhir : 231,377,421.00"\n';
+    final h = MutasiCsv.parse(csv);
+    expect(h.error, isNull);
+    expect(h.baris.length, 2);
+    expect(h.baris[0].jumlah, 100);
+    expect(h.baris[0].tanggalMutasi, '2026-09-08');
+    expect(h.baris[0].rekening, 'NABILA IRAMA PUTRA');
+    expect(h.baris[1].jumlah, 8520000);
+    expect(h.baris[1].rekening, 'AGUS TRIHERANTO');
+    expect(h.baris[1].berita, contains('AGUS TRIHERANTO'));
+  });
+
+  test('kode pengirim dari berita BCA yang terpotong spasi', () {
+    expect(
+      MutasiCsv.ruteDariBerita('SBGP01/02-09-2026', '2026-09-02'),
+      'SBGP01',
+    );
+    expect(
+      MutasiCsv.ruteDariBerita(
+        'TRSF E-BANKING CR 0109/FTTRX/SBGP04/02-09-2026',
+        '2026-09-02',
+      ),
+      'SBGP04',
+    );
+    expect(
+      MutasiCsv.ruteDariBerita(
+        'TRSF E-BANKING CR 0809/FTSCY/WS95271 8520000.00  SBGP 02, 08 SEPTEM BER 2026  AGUS TRIHERANTO',
+        '2026-09-08',
+      ),
+      'SBGP02',
+    );
+    expect(
+      MutasiCsv.ruteDariBerita(
+        'TRSF E-BANKING CR 0809/FTSCY/WS95271 16937000.00  SBGP03 - 08/09/202 6  MUHAMMAD AFJAYNI Z',
+        '2026-09-08',
+      ),
+      'SBGP03',
+    );
+    expect(
+      MutasiCsv.ruteDariBerita(
+        'TRSF E-BANKING CR 0809/FTSCY/WS95031 36544000.00  SBGP04 08 SEP 2026 NABILA IRAMA PUTRA',
+        '2026-09-08',
+      ),
+      'SBGP04',
+    );
+    expect(
+      MutasiCsv.ruteDariBerita(
+        'TRSF E-BANKING CR 0809/FTSCY/WS95031 15000000.00  TEGUH HARI HERMAWA',
+        '2026-09-08',
+      ),
+      isNull,
+    );
+    expect(
+      MutasiCsv.ruteDariBerita('SBGP04 08 SEP 2026', '2026-09-07'),
+      isNull,
+    );
+  });
+
+  test('nama pengirim dari keterangan BCA korporat', () {
+    expect(
+      MutasiCsv.namaDariBerita(
+        'TRSF E-BANKING CR 0809/FTSCY/WS95031 100.00  NABILA IRAMA PUTRA',
+      ),
+      'NABILA IRAMA PUTRA',
+    );
+    expect(
+      MutasiCsv.namaDariBerita(
+        'TRSF E-BANKING CR 0809/FTSCY/WS95271 8520000.00  SBGP 02, 08 SEPTEM BER 2026  AGUS TRIHERANTO',
+      ),
+      'AGUS TRIHERANTO',
+    );
+    expect(
+      MutasiCsv.namaDariBerita(
+        'TRSF E-BANKING CR 0809/FTSCY/WS95271 16937000.00  SBGP03 - 08/09/202 6  MUHAMMAD AFJAYNI Z',
+      ),
+      'MUHAMMAD AFJAYNI Z',
+    );
+    expect(
+      MutasiCsv.namaDariBerita(
+        'TRSF E-BANKING CR 0809/FTSCY/WS95031 36544000.00  SBGP04 08 SEP 2026 NABILA IRAMA PUTRA',
+      ),
+      'NABILA IRAMA PUTRA',
+    );
+    expect(
+      MutasiCsv.namaDariBerita(
+        'TRSF E-BANKING CR 0809/FTSCY/WS95031 15000000.00  TEGUH HARI HERMAWA',
+      ),
+      'TEGUH HARI HERMAWA',
+    );
+  });
 }
